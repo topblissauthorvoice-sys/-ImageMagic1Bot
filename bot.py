@@ -40,7 +40,7 @@ user_data = {}
 # ============= COMMAND HANDLERS =============
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command - Welcome message."""
+    """Handle /start command."""
     user = update.effective_user
     first_name = user.first_name or "User"
     
@@ -112,7 +112,7 @@ async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def convert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /convert command - Start conversion process."""
+    """Handle /convert command."""
     user_id = str(update.effective_user.id)
     
     if user_id not in user_data:
@@ -120,7 +120,6 @@ async def convert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user_data[user_id]['action'] = 'convert'
     
-    # Create format selection keyboard (3 columns)
     keyboard = []
     row = []
     for i, fmt in enumerate(SUPPORTED_FORMATS):
@@ -136,8 +135,7 @@ async def convert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         "🔄 *Select the output format:*\n\n"
-        "Choose a format to convert your image to.\n"
-        "After selecting, send me an image!",
+        "Choose a format to convert your image to.",
         parse_mode='Markdown',
         reply_markup=reply_markup
     )
@@ -154,8 +152,7 @@ async def compress_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         "📦 *Compress Image*\n\n"
-        "Send me an image and I'll compress it!\n\n"
-        "I'll reduce the file size while maintaining quality.",
+        "Send me an image and I'll compress it!",
         parse_mode='Markdown'
     )
 
@@ -171,8 +168,7 @@ async def resize_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         "📐 *Resize Image*\n\n"
-        "Send me an image and I'll resize it to 800x800!\n\n"
-        "The image will maintain its aspect ratio.",
+        "Send me an image and I'll resize it to 800x800!",
         parse_mode='Markdown'
     )
 
@@ -187,22 +183,16 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = user_data[user_id].get('action', 'convert')
     target_format = user_data[user_id].get('target_format', 'JPEG')
     
-    # Get the photo
     photo = update.message.photo[-1] if update.message.photo else None
     document = update.message.document
     
     if not photo and not document:
-        await update.message.reply_text(
-            "⚠️ Please send an image!\n\n"
-            "Supported formats: JPEG, PNG, WEBP, BMP, TIFF, ICO"
-        )
+        await update.message.reply_text("⚠️ Please send an image!")
         return
     
     try:
-        # Send processing message
-        processing_msg = await update.message.reply_text("⏳ Processing your image...")
+        await update.message.reply_text("⏳ Processing your image...")
         
-        # Download the image
         if photo:
             file = await photo.get_file()
         else:
@@ -210,13 +200,12 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         image_data = await file.download_as_bytearray()
         
-        # Process based on action
         if action == 'convert':
             result, filename = await convert_image(image_data, target_format)
-            caption = f"✅ Successfully converted to {target_format}!"
+            caption = f"✅ Converted to {target_format}!"
         elif action == 'compress':
             result, filename = await compress_image(image_data)
-            caption = "✅ Image compressed successfully!"
+            caption = "✅ Image compressed!"
         elif action == 'resize':
             result, filename = await resize_image(image_data)
             caption = "✅ Image resized to 800x800!"
@@ -224,10 +213,6 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             result, filename = await convert_image(image_data, 'JPEG')
             caption = "✅ Conversion complete!"
         
-        # Delete processing message
-        await processing_msg.delete()
-        
-        # Send the result
         if result:
             await update.message.reply_document(
                 document=result,
@@ -235,15 +220,11 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 caption=caption
             )
         else:
-            await update.message.reply_text(
-                "❌ Sorry, couldn't process the image. Please try again."
-            )
+            await update.message.reply_text("❌ Sorry, couldn't process the image.")
     
     except Exception as e:
         logger.error(f"Error processing image: {e}")
-        await update.message.reply_text(
-            "❌ Sorry, something went wrong. Please try again."
-        )
+        await update.message.reply_text("❌ Something went wrong. Please try again.")
 
 
 async def convert_image(image_data, target_format):
@@ -251,7 +232,6 @@ async def convert_image(image_data, target_format):
     try:
         img = Image.open(io.BytesIO(image_data))
         
-        # Convert RGBA to RGB for JPEG
         if target_format == 'JPEG' and img.mode in ('RGBA', 'LA', 'P'):
             background = Image.new('RGB', img.size, (255, 255, 255))
             if img.mode == 'P':
@@ -283,22 +263,14 @@ async def compress_image(image_data):
     """Compress image."""
     try:
         img = Image.open(io.BytesIO(image_data))
-        
         output = io.BytesIO()
-        original_size = len(image_data)
         
-        # Determine best format for compression
         if img.mode == 'RGBA':
             img.save(output, format='PNG', optimize=True, compress_level=9)
         else:
             img.save(output, format='JPEG', quality=70, optimize=True)
         
         output.seek(0)
-        compressed_size = len(output.getvalue())
-        compression_ratio = (1 - compressed_size / original_size) * 100
-        
-        logger.info(f"Compressed: {original_size} -> {compressed_size} ({compression_ratio:.1f}% reduction)")
-        
         return output.getvalue(), "compressed_image.jpg"
     
     except Exception as e:
@@ -310,13 +282,7 @@ async def resize_image(image_data):
     """Resize image to 800x800."""
     try:
         img = Image.open(io.BytesIO(image_data))
-        
-        # Get original dimensions
-        original_size = img.size
         img.thumbnail((800, 800), Image.Resampling.LANCZOS)
-        new_size = img.size
-        
-        logger.info(f"Resized: {original_size} -> {new_size}")
         
         output = io.BytesIO()
         if img.mode == 'RGBA':
@@ -343,7 +309,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in user_data:
         user_data[user_id] = {'action': 'convert', 'target_format': 'JPEG'}
     
-    # ===== MENU =====
     if data == "menu":
         keyboard = [
             [
@@ -362,11 +327,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
     
-    # ===== CONVERT =====
     elif data == "convert":
         user_data[user_id]['action'] = 'convert'
         
-        # Create format selection keyboard (3 columns)
         keyboard = []
         row = []
         for i, fmt in enumerate(SUPPORTED_FORMATS):
@@ -380,31 +343,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
-            "🔄 *Select the output format:*\n\n"
-            "Choose a format to convert your image to.",
+            "🔄 *Select the output format:*",
             parse_mode='Markdown',
             reply_markup=reply_markup
         )
     
-    # ===== COMPRESS =====
     elif data == "compress":
         user_data[user_id]['action'] = 'compress'
         await query.edit_message_text(
-            "📦 *Compress Image*\n\n"
-            "Send me an image and I'll compress it!",
+            "📦 *Compress Image*\n\nSend me an image!",
             parse_mode='Markdown'
         )
     
-    # ===== RESIZE =====
     elif data == "resize":
         user_data[user_id]['action'] = 'resize'
         await query.edit_message_text(
-            "📐 *Resize Image*\n\n"
-            "Send me an image and I'll resize it to 800x800!",
+            "📐 *Resize Image*\n\nSend me an image!",
             parse_mode='Markdown'
         )
     
-    # ===== ABOUT =====
     elif data == "about":
         about_text = (
             "ℹ️ *About ImageMagicBot*\n\n"
@@ -421,15 +378,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
     
-    # ===== FORMAT SELECTION =====
     elif data.startswith('format_'):
         selected_format = data.replace('format_', '').upper()
         user_data[user_id]['target_format'] = selected_format
         
         await query.edit_message_text(
             f"✅ *Selected format: {selected_format}*\n\n"
-            "Now send me an image to convert!\n\n"
-            "You can send a photo or a document.",
+            "Now send me an image to convert!",
             parse_mode='Markdown'
         )
 
@@ -439,25 +394,17 @@ def main():
     try:
         application = Application.builder().token(BOT_TOKEN).build()
         
-        # Command handlers
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("about", about))
         application.add_handler(CommandHandler("convert", convert_command))
         application.add_handler(CommandHandler("compress", compress_command))
         application.add_handler(CommandHandler("resize", resize_command))
         
-        # Callback handler
         application.add_handler(CallbackQueryHandler(button_handler))
-        
-        # Message handler for images
-        application.add_handler(MessageHandler(
-            filters.PHOTO | filters.Document.IMAGE,
-            handle_image
-        ))
+        application.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, handle_image))
         
         logger.info("🚀 Bot started successfully!")
         logger.info(f"📱 Bot username: @{BOT_USERNAME}")
-        logger.info(f"🖼️ Supported formats: {', '.join(SUPPORTED_FORMATS)}")
         
         application.run_polling(allowed_updates=Update.ALL_TYPES)
     
